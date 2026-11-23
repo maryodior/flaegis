@@ -4,6 +4,8 @@ Privacy-preserving federated fraud detection platform. Five institutions train a
 model with federated learning (Flower, FedAvg and FedAvgM). Only model weights leave each
 institution, never transaction data.
 
+# INSTRUCTIONS TO RUN
+
 ## Run locally
 1. Put the training outputs from Google Drive (FYP/dashboard_assets) into the assets folder.
 2. pip install -r requirements.txt
@@ -47,7 +49,7 @@ pytest -v                  (all 37 tests, including one real training session if
 pytest -v -m "not slow"    (quick run, skips the real training session)
 The tests use a temporary database, so they never change flaegis.db or the assets folder.
 
-## Demo accounts (change these after first login)
+## Demo accounts 
 | Role | Username | Password |
 |---|---|---|
 | Administrator | admin | Admin@123 |

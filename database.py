@@ -1,6 +1,7 @@
 """SQLite database for FLAegis: institutions, users, training sessions, round results,
 scored transactions and analyst reviews."""
 import json
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -10,7 +11,8 @@ import pandas as pd
 
 import model
 
-DB_PATH = Path(__file__).parent / 'flaegis.db'
+# FLAEGIS_DB lets the automated tests use a separate, temporary database
+DB_PATH = Path(os.environ.get('FLAEGIS_DB', Path(__file__).parent / 'flaegis.db'))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS institutions (
@@ -258,7 +260,8 @@ def live_training_available():
     try:
         import importlib.util
         return importlib.util.find_spec('flwr') is not None and \
-            importlib.util.find_spec('sklearn') is not None
+            importlib.util.find_spec('sklearn') is not None and \
+            importlib.util.find_spec('psutil') is not None
     except Exception:
         return False
 
@@ -267,45 +270,54 @@ def start_live_session(session_id):
     import subprocess
     import sys
     log = open(Path(__file__).parent / 'training_data' / f'session_{session_id}.log', 'w')
+    extra = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == 'win32' \
+        else {'start_new_session': True}
     proc = subprocess.Popen([sys.executable, str(Path(__file__).parent / 'trainer.py'),
                              '--session-id', str(session_id)],
-                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-                            cwd=str(Path(__file__).parent))
+                            stdout=log, stderr=subprocess.STDOUT, cwd=str(Path(__file__).parent),
+                            **extra)
     execute("UPDATE training_sessions SET status = 'Training' WHERE id = ?", (session_id,))
     set_setting(f'pid:{session_id}', str(proc.pid))
     set_setting(f'progress:{session_id}', 'Starting')
 
 
 def process_alive(session_id):
-    import os
-    pid = get_setting(f'pid:{session_id}')
-    if not pid:
-        return False
+    """Works on Windows, macOS and Linux."""
     try:
-        os.kill(int(pid), 0)
-    except (OSError, ValueError):
+        import psutil
+    except ImportError:          # no live training on this machine
         return False
-    try:   # a finished child that has not been collected yet counts as not alive
-        with open(f'/proc/{int(pid)}/stat') as f:
-            return f.read().split()[2] != 'Z'
-    except OSError:
-        return True
+    pid = get_setting(f'pid:{session_id}')
+    try:
+        p = psutil.Process(int(pid))
+        return p.is_running() and p.status() != psutil.STATUS_ZOMBIE
+    except (psutil.Error, TypeError, ValueError):
+        return False
 
 
 def stop_process(session_id):
-    import os
-    import signal
-    import shutil
-    import subprocess
+    """Stop the training process and everything it started (simulation workers)."""
+    try:
+        import psutil
+    except ImportError:          # no live training on this machine, so nothing to stop
+        return
     pid = get_setting(f'pid:{session_id}')
-    if pid:
+    try:
+        parent = psutil.Process(int(pid))
+        procs = parent.children(recursive=True) + [parent]
+    except (psutil.Error, TypeError, ValueError):
+        procs = []
+    for p in procs:
         try:
-            os.killpg(int(pid), signal.SIGTERM)
-        except (OSError, ValueError):
+            p.terminate()
+        except psutil.Error:
             pass
-    ray = shutil.which('ray')            # also stop any simulation workers left behind
-    if ray:
-        subprocess.run([ray, 'stop', '--force'], capture_output=True, timeout=60)
+    _, alive = psutil.wait_procs(procs, timeout=10)
+    for p in alive:
+        try:
+            p.kill()
+        except psutil.Error:
+            pass
 
 
 def add_round_result(session_id, rnd, m):

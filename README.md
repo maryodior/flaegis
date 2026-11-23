@@ -12,6 +12,26 @@ institution, never transaction data.
 The SQLite database (flaegis.db) is created automatically on first run, with the demo
 institutions, accounts and completed training sessions.
 
+## Running FLAegis with live training on your own computer
+Requirements: Python 3.10 to 3.12, Git, about 2 GB of free disk space and 8 GB of RAM.
+Tested on Linux (WSL on Windows). Native Windows and macOS should also work; on Windows, WSL is the safest option.
+
+1. Get the code:
+   git clone https://github.com/maryodior/flaegis.git
+   cd flaegis
+2. Create an environment and install everything:
+   python -m venv .venv
+   source .venv/bin/activate        (Windows PowerShell: .venv\Scripts\Activate.ps1)
+   pip install -r requirements.txt -r requirements-training.txt
+3. Download stage1_data.npz from the shared Google Drive link and put it in a folder named
+   training_data inside the flaegis folder (training_data/stage1_data.npz).
+4. Start the app:
+   streamlit run app.py
+   It opens at http://localhost:8501. Sign in as admin / Admin@123.
+5. Go to Training sessions. It should say "Training server: this machine". Create a session
+   (for example FedAvg, Non-IID, 20 rounds) and watch it train live. The first session takes a few
+   extra minutes while the five institutions' data is prepared.
+
 ## Live training on this machine (optional)
 1. Put stage1_data.npz (from Google Drive, FYP folder) in a folder called training_data.
 2. pip install -r requirements-training.txt
@@ -20,6 +40,12 @@ institutions, accounts and completed training sessions.
 
 Without training_data (for example on Streamlit Community Cloud), sessions run on an external
 training server and their results are uploaded.
+
+## Automated tests
+pip install -r requirements-dev.txt
+pytest -v                  (all 37 tests, including one real training session if training_data is present)
+pytest -v -m "not slow"    (quick run, skips the real training session)
+The tests use a temporary database, so they never change flaegis.db or the assets folder.
 
 ## Demo accounts (change these after first login)
 | Role | Username | Password |

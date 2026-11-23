@@ -1,5 +1,6 @@
 """FLAegis analyst dashboard. Run with: streamlit run app.py"""
 import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -405,7 +406,7 @@ def page_sessions():
                             {'round', 'auc_pr', 'precision', 'recall', 'f1'} <= set(h) for h in history)
                         w = np.load(w_file)
                         assert w['coef'].size == len(model.FEATURES)
-                        fname = f'session_{sid}_weights.npz'
+                        fname = f'session_{sid}_{int(time.time())}_weights.npz'
                         np.savez(model.ASSETS / fname, coef=w['coef'], intercept=w['intercept'])
                         db.import_results(int(sid), history, fname)
                         flash(f'Results loaded for session {sid}. Training is complete.')

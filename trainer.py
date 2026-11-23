@@ -10,6 +10,7 @@ final global model.
 """
 import argparse
 import os
+import time
 import sys
 import traceback
 import warnings
@@ -132,7 +133,7 @@ def main(session_id):
         result = strategy.start(grid=grid, initial_arrays=ArrayRecord(
             [np.zeros((1, n_features)), np.zeros(1)]), num_rounds=rounds, evaluate_fn=evaluate)
         w = result.arrays.to_numpy_ndarrays()
-        fname = f'session_{session_id}_weights.npz'
+        fname = f'session_{session_id}_{int(time.time())}_weights.npz'   # unique, never overwrites
         np.savez(ROOT / 'assets' / fname, coef=w[0], intercept=w[1])
         db.finish_session(session_id, fname)
 

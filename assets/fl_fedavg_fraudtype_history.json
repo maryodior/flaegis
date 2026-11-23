@@ -1,0 +1,191 @@
+[
+  {
+    "round": 0,
+    "auc_pr": 0.002965265069069199,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "recall_transfer_fraud": 0.0,
+    "recall_cashout_fraud": 0.0
+  },
+  {
+    "round": 1,
+    "auc_pr": 0.9897798954619174,
+    "precision": 1.0,
+    "recall": 0.007303712720632989,
+    "f1": 0.014501510574018127,
+    "recall_transfer_fraud": 0.014598540145985401,
+    "recall_cashout_fraud": 0.0
+  },
+  {
+    "round": 2,
+    "auc_pr": 0.985825970677684,
+    "precision": 1.0,
+    "recall": 0.47778454047474134,
+    "f1": 0.6466227347611203,
+    "recall_transfer_fraud": 0.9282238442822385,
+    "recall_cashout_fraud": 0.02679658952496955
+  },
+  {
+    "round": 3,
+    "auc_pr": 0.9844764692155462,
+    "precision": 1.0,
+    "recall": 0.7267194157029824,
+    "f1": 0.8417342262953824,
+    "recall_transfer_fraud": 0.9476885644768857,
+    "recall_cashout_fraud": 0.5054811205846529
+  },
+  {
+    "round": 4,
+    "auc_pr": 0.9812935159579284,
+    "precision": 1.0,
+    "recall": 0.8679245283018868,
+    "f1": 0.9292929292929293,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.781973203410475
+  },
+  {
+    "round": 5,
+    "auc_pr": 0.9842021568264514,
+    "precision": 1.0,
+    "recall": 0.8691418137553256,
+    "f1": 0.9299902311950504,
+    "recall_transfer_fraud": 0.9525547445255474,
+    "recall_cashout_fraud": 0.7856272838002436
+  },
+  {
+    "round": 6,
+    "auc_pr": 0.9852830617409615,
+    "precision": 1.0,
+    "recall": 0.8667072428484479,
+    "f1": 0.9285947179654386,
+    "recall_transfer_fraud": 0.9525547445255474,
+    "recall_cashout_fraud": 0.7807551766138855
+  },
+  {
+    "round": 7,
+    "auc_pr": 0.9859759143857213,
+    "precision": 1.0,
+    "recall": 0.8575776019476568,
+    "f1": 0.9233289646133683,
+    "recall_transfer_fraud": 0.9525547445255474,
+    "recall_cashout_fraud": 0.7624847746650426
+  },
+  {
+    "round": 8,
+    "auc_pr": 0.9864816352121898,
+    "precision": 1.0,
+    "recall": 0.8466220328667072,
+    "f1": 0.916941331575478,
+    "recall_transfer_fraud": 0.9525547445255474,
+    "recall_cashout_fraud": 0.7405602923264312
+  },
+  {
+    "round": 9,
+    "auc_pr": 0.9867893621365795,
+    "precision": 1.0,
+    "recall": 0.8368837492391966,
+    "f1": 0.9111994698475812,
+    "recall_transfer_fraud": 0.9525547445255474,
+    "recall_cashout_fraud": 0.7210718635809987
+  },
+  {
+    "round": 10,
+    "auc_pr": 0.9869179396934038,
+    "precision": 1.0,
+    "recall": 0.8295800365185636,
+    "f1": 0.9068529607451763,
+    "recall_transfer_fraud": 0.9525547445255474,
+    "recall_cashout_fraud": 0.7064555420219245
+  },
+  {
+    "round": 11,
+    "auc_pr": 0.9869553815164013,
+    "precision": 1.0,
+    "recall": 0.8222763237979306,
+    "f1": 0.9024716098864396,
+    "recall_transfer_fraud": 0.9525547445255474,
+    "recall_cashout_fraud": 0.6918392204628502
+  },
+  {
+    "round": 12,
+    "auc_pr": 0.9869563758405595,
+    "precision": 1.0,
+    "recall": 0.8222763237979306,
+    "f1": 0.9024716098864396,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.6906211936662606
+  },
+  {
+    "round": 13,
+    "auc_pr": 0.9869450428481193,
+    "precision": 1.0,
+    "recall": 0.82288496652465,
+    "f1": 0.9028380634390651,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.6918392204628502
+  },
+  {
+    "round": 14,
+    "auc_pr": 0.9869423914739577,
+    "precision": 1.0,
+    "recall": 0.8253195374315276,
+    "f1": 0.9043014338112704,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.6967113276492083
+  },
+  {
+    "round": 15,
+    "auc_pr": 0.9869499397456482,
+    "precision": 1.0,
+    "recall": 0.8259281801582471,
+    "f1": 0.9046666666666666,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.6979293544457978
+  },
+  {
+    "round": 16,
+    "auc_pr": 0.9869672704944757,
+    "precision": 1.0,
+    "recall": 0.8277541083384053,
+    "f1": 0.9057609057609057,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.7015834348355664
+  },
+  {
+    "round": 17,
+    "auc_pr": 0.9869836202308554,
+    "precision": 1.0,
+    "recall": 0.8295800365185636,
+    "f1": 0.9068529607451763,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.705237515225335
+  },
+  {
+    "round": 18,
+    "auc_pr": 0.986999480663583,
+    "precision": 1.0,
+    "recall": 0.8295800365185636,
+    "f1": 0.9068529607451763,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.705237515225335
+  },
+  {
+    "round": 19,
+    "auc_pr": 0.9870158046368284,
+    "precision": 1.0,
+    "recall": 0.8307973219720024,
+    "f1": 0.9075797872340425,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.707673568818514
+  },
+  {
+    "round": 20,
+    "auc_pr": 0.9870368292697884,
+    "precision": 1.0,
+    "recall": 0.8326232501521607,
+    "f1": 0.9086682165393557,
+    "recall_transfer_fraud": 0.9537712895377128,
+    "recall_cashout_fraud": 0.7113276492082826
+  }
+]

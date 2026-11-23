@@ -33,6 +33,17 @@ st.markdown("""
 db.initialise()
 
 
+def flash(msg):
+    st.session_state['flash'] = msg
+
+
+def show_flash():
+    msg = st.session_state.pop('flash', None)
+    if msg:
+        st.toast(msg, icon='✅')
+        st.success(msg)
+
+
 def footer():
     st.markdown(f'<div class="fs-footer">{APP_NAME} v1.0 · Privacy-preserving federated fraud '
                 'detection across participating institutions</div>', unsafe_allow_html=True)
@@ -272,14 +283,41 @@ def page_my_institution():
         hide_index=True, width='stretch')
 
 
+@st.fragment(run_every=2)
+def live_progress(sid, name, rounds):
+    """Refreshes every 2 seconds while a session trains on this machine."""
+    status = db.query('SELECT status FROM training_sessions WHERE id = ?', (sid,))['status'].iloc[0]
+    if status != 'Training':
+        st.rerun()           # finished, failed or cancelled: redraw the whole page
+    rr = db.latest_round(sid)
+    done = int(rr['round'].max()) if len(rr) else 0
+    st.info(f"🔄 **Session {sid} ({name}) is training on this machine.** "
+            f"{db.get_setting(f'progress:{sid}') or 'Starting'}")
+    st.progress(min(done / rounds, 1.0), text=f'Round {done} of {rounds}')
+    if len(rr) > 1:
+        last = rr.iloc[-1]
+        c = st.columns(4)
+        c[0].metric('AUC-PR', f"{last['auc_pr']:.4f}")
+        c[1].metric('Precision', f"{last['precision']:.4f}")
+        c[2].metric('Recall', f"{last['recall']:.4f}")
+        c[3].metric('F1', f"{last['f1']:.4f}")
+        fig = px.line(rr[rr['round'] > 0], x='round', y='auc_pr', markers=True,
+                      color_discrete_sequence=[TEAL], labels={'round': 'Round', 'auc_pr': 'AUC-PR'})
+        fig.update_xaxes(range=[0.5, rounds + 0.5])
+        st.plotly_chart(style_fig(fig, 280), width='stretch')
+
+
 def page_sessions():
     st.title('Training sessions')
     st.write('A training session runs the federated rounds on the training server. The coordination '
              'server sends the global model to each institution, each institution trains locally, '
              'and only the updated weights come back.')
 
+    db.check_stalled()
     sessions = db.list_sessions()
-    show = sessions.drop(columns=['weights_file']).rename(columns={
+    show_archived = st.toggle('Show archived sessions', value=False)
+    visible = sessions if show_archived else sessions[sessions['status'] != 'Archived']
+    show = visible.drop(columns=['weights_file']).rename(columns={
         'id': 'ID', 'name': 'Name', 'strategy': 'Strategy', 'data_split': 'Data split',
         'rounds': 'Rounds', 'server_momentum': 'Momentum', 'status': 'Status',
         'created_by': 'Created by', 'created_at': 'Created', 'completed_at': 'Completed',
@@ -293,36 +331,71 @@ def page_sessions():
                           index=list(options).index(current), format_func=lambda k: options[k])
     if st.button('Set as model in use', type='primary', disabled=choice == current):
         db.set_setting('active_model', choice)
-        st.success(f'Analysts now score with: {options[choice]}')
+        flash(f'Analysts now score with: {options[choice]}')
         st.rerun()
 
-    t1, t2 = st.tabs(['Create a new session', 'Upload results from the training server'])
+    db.check_stalled()
+    live = db.live_training_available()
+    sessions = db.list_sessions()
+    running = sessions[sessions['status'].isin(db.RUNNING_STATUSES)]
+    st.subheader('Training status')
+    st.caption('Training server: ' + ('**this machine** (sessions start and run automatically)' if live
+               else '**external** (run the session on the training server, then upload its results)'))
+    if len(running):
+        r = running.iloc[0]
+        if r['status'] == 'Training':
+            live_progress(int(r['id']), r['name'], int(r['rounds']))
+        else:
+            st.warning(f"⏳ **Session {r['id']} ({r['name']}) is in progress** on the training server "
+                       f"since {r['created_at']}. A new session can be created once its results are "
+                       'uploaded or it is cancelled.')
+        if st.button(f"Cancel session {r['id']}"):
+            db.cancel_session(int(r['id']))
+            flash(f"Session {r['id']} was cancelled.")
+            st.rerun()
+    else:
+        st.success('✅ No training session is running. You can create a new one.')
+
+    t1, t2, t3 = st.tabs(['Create a new session', 'Upload results from the training server',
+                          'Archive or delete sessions'])
     with t1:
-        with st.form('new_session'):
+        busy = len(running) > 0
+        with st.form('new_session', clear_on_submit=True):
             c1, c2 = st.columns(2)
-            name = c1.text_input('Session name', placeholder='e.g. FedAvgM non-IID, 30 rounds')
-            strategy = c2.selectbox('Aggregation strategy', ['FedAvg', 'FedAvgM'])
-            split = c1.selectbox('Data split', ['Non-IID', 'IID'])
-            rounds = c2.number_input('Number of rounds', min_value=1, max_value=100, value=20)
-            momentum = c1.slider('Server momentum (FedAvgM only)', 0.0, 0.99, 0.5, 0.05)
-            if st.form_submit_button('Create session', type='primary'):
+            name = c1.text_input('Session name', placeholder='e.g. FedAvgM non-IID, 30 rounds',
+                                 disabled=busy)
+            strategy = c2.selectbox('Aggregation strategy', ['FedAvg', 'FedAvgM'], disabled=busy)
+            split = c1.selectbox('Data split', ['Non-IID', 'IID', 'Fraud-type skew'], disabled=busy)
+            rounds = c2.number_input('Number of rounds', min_value=1, max_value=100, value=20,
+                                     disabled=busy)
+            momentum = c1.slider('Server momentum (FedAvgM only)', 0.0, 0.99, 0.5, 0.05, disabled=busy)
+            label = 'Training in progress, please wait' if busy else 'Create session'
+            if st.form_submit_button(label, type='primary', disabled=busy):
                 if not name.strip():
                     st.error('Please give the session a name.')
+                elif db.list_sessions()['status'].isin(db.RUNNING_STATUSES).any():
+                    st.error('A training session is already in progress.')
                 else:
                     sid = db.create_session(name.strip(), strategy, split, int(rounds),
                                             momentum if strategy == 'FedAvgM' else None, user['id'])
-                    st.success(f'Session {sid} created. Run it on the training server with these '
-                               'settings, then upload its results in the next tab.')
+                    if live:
+                        db.start_live_session(sid)
+                        flash(f'Session {sid} started. The coordination server is sending the model '
+                              'to the 5 institutions. Progress appears below as each round finishes.')
+                    else:
+                        flash(f'Session {sid} created and marked as in progress. Run it on the training '
+                              'server with these settings, then upload its results in the next tab.')
                     st.rerun()
     with t2:
-        waiting = sessions[sessions['status'] == 'Awaiting results']
-        if len(waiting) == 0:
-            st.info('No sessions are waiting for results. Create one first.')
+        manual = running[running['status'] != 'Training']
+        if len(manual) == 0:
+            st.info('No session is waiting for uploaded results. '
+                    + ('Sessions on this machine finish automatically.' if live else ''))
         else:
             with st.form('upload_results'):
-                sid = st.selectbox('Session', waiting['id'].tolist(),
+                sid = st.selectbox('Session', manual['id'].tolist(),
                                    format_func=lambda s: f"Session {s}: "
-                                   f"{waiting.set_index('id').loc[s, 'name']}")
+                                   f"{manual.set_index('id').loc[s, 'name']}")
                 hist_file = st.file_uploader('Round history (.json)', type=['json'])
                 w_file = st.file_uploader('Final model weights (.npz)', type=['npz'])
                 if st.form_submit_button('Upload results', type='primary'):
@@ -335,12 +408,44 @@ def page_sessions():
                         fname = f'session_{sid}_weights.npz'
                         np.savez(model.ASSETS / fname, coef=w['coef'], intercept=w['intercept'])
                         db.import_results(int(sid), history, fname)
-                        st.success(f'Results loaded for session {sid}.')
+                        flash(f'Results loaded for session {sid}. Training is complete.')
                         st.rerun()
                     except Exception:
                         st.error('These files are not valid session results. Upload the history '
                                  '.json and weights .npz saved by the training server.')
-
+    with t3:
+        st.caption('Completed sessions are kept as an audit trail of how each model was trained, so '
+                   'they can be archived (hidden) but not deleted. Cancelled sessions never produced '
+                   'a model and can be deleted permanently.')
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('**Archive or restore a completed session**')
+            arch = sessions[sessions['status'].isin(['Completed', 'Archived'])]
+            if len(arch):
+                sid = st.selectbox('Session', arch['id'].tolist(), key='arch_sel',
+                                   format_func=lambda i: f"Session {i}: {arch.set_index('id').loc[i, 'name']}"
+                                   f" ({arch.set_index('id').loc[i, 'status']})")
+                is_arch = arch.set_index('id').loc[sid, 'status'] == 'Archived'
+                if st.button('Restore session' if is_arch else 'Archive session'):
+                    try:
+                        db.archive_session(int(sid), archived=not is_arch)
+                        flash(f"Session {sid} {'restored' if is_arch else 'archived'}.")
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
+        with c2:
+            st.markdown('**Delete a cancelled or failed session**')
+            canc = sessions[sessions['status'].isin(['Cancelled', 'Failed'])]
+            if len(canc) == 0:
+                st.info('There are no cancelled or failed sessions.')
+            else:
+                sid = st.selectbox('Session', canc['id'].tolist(), key='del_sel',
+                                   format_func=lambda i: f"Session {i}: {canc.set_index('id').loc[i, 'name']}")
+                sure = st.checkbox('I understand this cannot be undone')
+                if st.button('Delete session', disabled=not sure):
+                    db.delete_session(int(sid))
+                    flash(f'Session {sid} deleted.')
+                    st.rerun()
 
 def page_institutions():
     st.title('Institutions')
@@ -555,5 +660,6 @@ if st.sidebar.button('Sign out', width='stretch'):
     st.rerun()
 st.sidebar.caption(TAGLINE)
 
+show_flash()
 PAGES[page]()
 footer()

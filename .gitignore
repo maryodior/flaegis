@@ -2,3 +2,4 @@ flaegis.db
 fraud.db
 __pycache__/
 .venv/
+training_data/

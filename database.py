@@ -91,6 +91,7 @@ SEED_RUNS = [
     ('fedavgm05_fraudtype', 'FedAvgM (momentum 0.5), fraud-type skew', 'FedAvgM', 'Fraud-type skew', 0.5),
 ]
 DEFAULT_ACTIVE = 'fedavg_noniid'
+RUNNING_STATUSES = ['Training', 'In progress', 'Awaiting results']
 
 
 def now():
@@ -98,7 +99,7 @@ def now():
 
 
 def connect():
-    con = sqlite3.connect(DB_PATH, check_same_thread=False)
+    con = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     con.row_factory = sqlite3.Row
     con.execute('PRAGMA foreign_keys = ON')
     return con
@@ -230,7 +231,7 @@ def create_session(name, strategy, split, rounds, momentum, created_by):
     return execute(
         'INSERT INTO training_sessions (name, strategy, data_split, rounds, server_momentum, status, '
         'created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        (name, strategy, split, rounds, momentum, 'Awaiting results', created_by, now()))
+        (name, strategy, split, rounds, momentum, 'In progress', created_by, now()))
 
 
 def import_results(session_id, history, weights_file):
@@ -246,6 +247,125 @@ def import_results(session_id, history, weights_file):
     con.close()
 
 
+# ---------- live training on this machine ----------
+TRAIN_DATA = Path(__file__).parent / 'training_data' / 'stage1_data.npz'
+
+
+def live_training_available():
+    """True when this machine can run training itself (data file present and Flower installed)."""
+    if not TRAIN_DATA.exists():
+        return False
+    try:
+        import importlib.util
+        return importlib.util.find_spec('flwr') is not None and \
+            importlib.util.find_spec('sklearn') is not None
+    except Exception:
+        return False
+
+
+def start_live_session(session_id):
+    import subprocess
+    import sys
+    log = open(Path(__file__).parent / 'training_data' / f'session_{session_id}.log', 'w')
+    proc = subprocess.Popen([sys.executable, str(Path(__file__).parent / 'trainer.py'),
+                             '--session-id', str(session_id)],
+                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+                            cwd=str(Path(__file__).parent))
+    execute("UPDATE training_sessions SET status = 'Training' WHERE id = ?", (session_id,))
+    set_setting(f'pid:{session_id}', str(proc.pid))
+    set_setting(f'progress:{session_id}', 'Starting')
+
+
+def process_alive(session_id):
+    import os
+    pid = get_setting(f'pid:{session_id}')
+    if not pid:
+        return False
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, ValueError):
+        return False
+    try:   # a finished child that has not been collected yet counts as not alive
+        with open(f'/proc/{int(pid)}/stat') as f:
+            return f.read().split()[2] != 'Z'
+    except OSError:
+        return True
+
+
+def stop_process(session_id):
+    import os
+    import signal
+    import shutil
+    import subprocess
+    pid = get_setting(f'pid:{session_id}')
+    if pid:
+        try:
+            os.killpg(int(pid), signal.SIGTERM)
+        except (OSError, ValueError):
+            pass
+    ray = shutil.which('ray')            # also stop any simulation workers left behind
+    if ray:
+        subprocess.run([ray, 'stop', '--force'], capture_output=True, timeout=60)
+
+
+def add_round_result(session_id, rnd, m):
+    execute('INSERT OR REPLACE INTO round_results VALUES (?, ?, ?, ?, ?, ?)',
+            (session_id, int(rnd), m['auc_pr'], m['precision'], m['recall'], m['f1']))
+
+
+def finish_session(session_id, weights_file):
+    execute("UPDATE training_sessions SET status = 'Completed', weights_file = ?, completed_at = ? "
+            "WHERE id = ? AND status = 'Training'", (weights_file, now(), session_id))
+    set_setting(f'progress:{session_id}', 'Completed')
+
+
+def fail_session(session_id, message):
+    execute("UPDATE training_sessions SET status = 'Failed', completed_at = ? "
+            "WHERE id = ? AND status = 'Training'", (now(), session_id))
+    set_setting(f'progress:{session_id}', 'Failed: ' + message)
+
+
+def check_stalled():
+    """Mark a live session as failed if its training process has stopped without finishing."""
+    df = query("SELECT id FROM training_sessions WHERE status = 'Training'")
+    for sid in df['id']:
+        if not process_alive(int(sid)):
+            fail_session(int(sid), 'The training process stopped unexpectedly.')
+
+
+def latest_round(session_id):
+    df = query('SELECT * FROM round_results WHERE session_id = ? ORDER BY round', (session_id,))
+    return df
+
+
+def cancel_session(session_id):
+    stop_process(session_id)
+    execute("UPDATE training_sessions SET status = 'Cancelled', completed_at = ? WHERE id = ?",
+            (now(), session_id))
+
+
+def delete_session(session_id):
+    """Permanently delete a cancelled session (it never produced a model)."""
+    con = connect()
+    status = con.execute('SELECT status FROM training_sessions WHERE id = ?', (session_id,)).fetchone()
+    if status is None or status[0] not in ('Cancelled', 'Failed'):
+        con.close()
+        raise ValueError('Only cancelled or failed sessions can be deleted.')
+    con.execute('DELETE FROM round_results WHERE session_id = ?', (session_id,))
+    con.execute('DELETE FROM training_sessions WHERE id = ?', (session_id,))
+    con.commit()
+    con.close()
+
+
+def archive_session(session_id, archived=True):
+    """Hide a completed session from lists and charts, keeping it for the audit trail."""
+    if archived and active_model() == f'session:{session_id}':
+        raise ValueError('This session is the model in use. Choose another model first.')
+    new, old = ('Archived', 'Completed') if archived else ('Completed', 'Archived')
+    execute('UPDATE training_sessions SET status = ? WHERE id = ? AND status = ?',
+            (new, session_id, old))
+
+
 def list_sessions():
     return query("""SELECT s.id, s.name, s.strategy, s.data_split, s.rounds, s.server_momentum,
                            s.status, s.weights_file, u.username AS created_by, s.created_at,
@@ -259,8 +379,9 @@ def list_sessions():
 
 
 def round_results(session_ids=None):
-    df = query('SELECT r.*, s.name FROM round_results r '
-               'JOIN training_sessions s ON r.session_id = s.id ORDER BY r.session_id, r.round')
+    df = query("SELECT r.*, s.name FROM round_results r "
+               "JOIN training_sessions s ON r.session_id = s.id "
+               "WHERE s.status = 'Completed' ORDER BY r.session_id, r.round")
     if session_ids is not None:
         df = df[df['session_id'].isin(session_ids)]
     return df

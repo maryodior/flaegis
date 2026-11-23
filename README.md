@@ -12,6 +12,15 @@ institution, never transaction data.
 The SQLite database (flaegis.db) is created automatically on first run, with the demo
 institutions, accounts and completed training sessions.
 
+## Live training on this machine (optional)
+1. Put stage1_data.npz (from Google Drive, FYP folder) in a folder called training_data.
+2. pip install -r requirements-training.txt
+3. Run the app. The Training sessions page now says "Training server: this machine", and creating a
+   session starts federated training in the background with live round-by-round progress.
+
+Without training_data (for example on Streamlit Community Cloud), sessions run on an external
+training server and their results are uploaded.
+
 ## Demo accounts (change these after first login)
 | Role | Username | Password |
 |---|---|---|
